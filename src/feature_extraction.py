@@ -11,6 +11,27 @@ from skimage.feature import (
 )
 from skimage.measure import shannon_entropy
 
+from PIL import Image
+from pillow_heif import register_heif_opener
+
+register_heif_opener()
+
+def load_image(path):
+
+    ext = path.lower().split(".")[-1]
+
+    if ext in ["heic", "heif"]:
+
+        img = Image.open(path).convert("RGB")
+
+        return cv2.cvtColor(
+            np.array(img),
+            cv2.COLOR_RGB2BGR
+        )
+
+    return cv2.imread(path)
+
+
 # -----------------------------
 # CONFIG
 # -----------------------------
@@ -165,7 +186,7 @@ for label in ["real", "screen"]:
 
         path = os.path.join(folder, file)
 
-        img = cv2.imread(path)
+        img = load_image(path)
 
         if img is None:
             continue

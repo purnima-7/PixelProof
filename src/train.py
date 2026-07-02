@@ -4,8 +4,9 @@ import joblib
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.feature_selection import SelectFromModel
 from sklearn.model_selection import StratifiedKFold, cross_validate
-
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 
@@ -15,7 +16,7 @@ from xgboost import XGBClassifier
 # Load Dataset
 # -------------------------------------------------
 
-df = pd.read_csv("../features_selected.csv")
+df = pd.read_csv("../features.csv")
 
 X = df.drop(columns=["image", "label"])
 y = LabelEncoder().fit_transform(df["label"])
@@ -37,22 +38,48 @@ cv = StratifiedKFold(
 models = {
 
     "Random Forest":
-    RandomForestClassifier(
-        n_estimators=700,
-        max_depth=None,
-        min_samples_leaf=1,
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=-1
-    ),
+    Pipeline([
+        (
+            "selector",
+            SelectFromModel(
+                RandomForestClassifier(
+                    n_estimators=700,
+                    random_state=42,
+                    n_jobs=-1
+                ),
+                threshold="0.75*mean"
+            )
+        ),
+        (
+            "rf",
+            RandomForestClassifier(
+                n_estimators=700,
+                class_weight="balanced",
+                random_state=42,
+                n_jobs=-1
+            )
+        )
+    ]),
 
     "SVM":
     Pipeline([
+        (
+            "selector",
+            SelectFromModel(
+                RandomForestClassifier(
+                    n_estimators=700,
+                    random_state=42,
+                    n_jobs=-1
+                ),
+                threshold="0.75*mean"
+            )
+        ),
         ("scaler", StandardScaler()),
-        ("svm",
+        (
+            "svm",
             SVC(
                 kernel="rbf",
-                C=10,
+                C=5,
                 gamma="scale",
                 probability=True,
                 random_state=42
@@ -61,16 +88,32 @@ models = {
     ]),
 
     "XGBoost":
-    XGBClassifier(
-        n_estimators=500,
-        learning_rate=0.03,
-        max_depth=5,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        objective="binary:logistic",
-        eval_metric="logloss",
-        random_state=42
-    )
+    Pipeline([
+        (
+            "selector",
+            SelectFromModel(
+                RandomForestClassifier(
+                    n_estimators=700,
+                    random_state=42,
+                    n_jobs=-1
+                ),
+                threshold="0.75*mean"
+            )
+        ),
+        (
+            "xgb",
+            XGBClassifier(
+                n_estimators=500,
+                learning_rate=0.03,
+                max_depth=5,
+                subsample=0.9,
+                colsample_bytree=0.9,
+                objective="binary:logistic",
+                eval_metric="logloss",
+                random_state=42
+            )
+        )
+    ])
 }
 
 # -------------------------------------------------
