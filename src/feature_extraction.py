@@ -239,110 +239,110 @@ def fft_peak_ratio(gray):
         "fft_peak": peak
     }
 
+def extract_features_from_image(path, label=None):
+
+    img = load_image(path)
+
+    if img is None:
+        return None
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    gray = cv2.resize(gray, (256, 256))
+    img = cv2.resize(img, (256, 256))
+
+    edge = edge_features(gray)
+    fft = fft_peak_ratio(gray)
+
+    peak_count, peak_strength = fft_peak_features(gray)
+
+    r_mean, g_mean, b_mean, r_std, g_std, b_std = rgb_features(img)
+
+    h_mean, s_mean, v_mean, h_std, s_std, v_std = hsv_features(img)
+
+    glcm_contrast, glcm_homogeneity, glcm_energy, glcm_correlation = glcm_features(gray)
+
+    features = {
+
+        "laplacian_variance": laplacian_variance(gray),
+        "edge_density": edge["edge_density"],
+        "brightness": brightness(gray),
+        "contrast": contrast(gray),
+        "entropy": entropy(gray),
+        "glare_percentage": glare_percentage(gray),
+
+        "pixel_grid_score": pixel_grid_score(gray),
+
+        "num_lines": edge["num_lines"],
+        "avg_line_length": edge["avg_line_length"],
+
+        "fft_peak_ratio": fft["fft_peak_ratio"],
+        "fft_peak": fft["fft_peak"],
+
+        "fft_peak_count": peak_count,
+        "fft_peak_strength": peak_strength,
+
+        "glcm_contrast": glcm_contrast,
+        "glcm_homogeneity": glcm_homogeneity,
+        "glcm_energy": glcm_energy,
+        "glcm_correlation": glcm_correlation,
+
+        "r_mean": r_mean,
+        "g_mean": g_mean,
+        "b_mean": b_mean,
+
+        "r_std": r_std,
+        "g_std": g_std,
+        "b_std": b_std,
+
+        "h_mean": h_mean,
+        "s_mean": s_mean,
+        "v_mean": v_mean,
+
+        "h_std": h_std,
+        "s_std": s_std,
+        "v_std": v_std,
+    }
+
+    lbp_hist = extract_lbp_features(gray)
+
+    for i, value in enumerate(lbp_hist):
+        features[f"lbp_{i}"] = value
+
+    if label is not None:
+        features["image"] = os.path.basename(path)
+        features["label"] = label
+
+    return features
+
 
 # -----------------------------
 # Main
 # -----------------------------
+if __name__ == "__main__":
+    rows = []
 
-rows = []
+    for label in ["real", "screen"]:
 
-for label in ["real", "screen"]:
+        folder = os.path.join(DATASET_PATH, label)
 
-    folder = os.path.join(DATASET_PATH, label)
+        for file in tqdm(os.listdir(folder), desc=label):
+        
+            path = os.path.join(folder, file)
 
-    for file in tqdm(os.listdir(folder), desc=label):
+            features = extract_features_from_image(path, label)
 
-        path = os.path.join(folder, file)
-
-        img = load_image(path)
-
-        if img is None:
-            continue
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (256, 256))
-        img = cv2.resize(img,(256,256))
-
-        edge = edge_features(gray)
-        fft = fft_peak_ratio(gray)
-
-        peak_count, peak_strength = fft_peak_features(gray)
-
-        r_mean,\
-        g_mean,\
-        b_mean,\
-        r_std,\
-        g_std,\
-        b_std = rgb_features(img)
-
-        h_mean,\
-        s_mean,\
-        v_mean,\
-        h_std,\
-        s_std,\
-        v_std = hsv_features(img)
-
-        glcm_contrast,\
-        glcm_homogeneity,\
-        glcm_energy,\
-        glcm_correlation = glcm_features(gray)
-
-        features = {
-            "image": file,
-            "label": label,
-            "laplacian_variance": laplacian_variance(gray),
-            "edge_density": edge_density(gray),
-            "brightness": brightness(gray),
-            "contrast": contrast(gray),
-            "entropy": entropy(gray),
-            "glare_percentage": glare_percentage(gray),
-            "pixel_grid_score": pixel_grid_score(gray),
-            "edge_density": edge["edge_density"],
-            "num_lines": edge["num_lines"],
-            "avg_line_length": edge["avg_line_length"],
-
-            "fft_peak_ratio": fft["fft_peak_ratio"],
-            "fft_peak": fft["fft_peak"],
-            "fft_peak_count": peak_count,
-            "fft_peak_strength": peak_strength,
-
-            "glcm_contrast": glcm_contrast,
-            "glcm_homogeneity": glcm_homogeneity,
-            "glcm_energy": glcm_energy,
-            "glcm_correlation": glcm_correlation,
-
-            "r_mean": r_mean,
-            "g_mean": g_mean,
-            "b_mean": b_mean,
-
-            "r_std": r_std,
-            "g_std": g_std,
-            "b_std": b_std,
-
-            "h_mean": h_mean,
-            "s_mean": s_mean,
-            "v_mean": v_mean,
-
-            "h_std": h_std,
-            "s_std": s_std,
-            "v_std": v_std,
-        }
-
-        lbp_hist = extract_lbp_features(gray)
-
-        for i, value in enumerate(lbp_hist):
-            features[f"lbp_{i}"] = value
-
-        rows.append(features)
+            if features is not None:
+                rows.append(features)
 
 
-df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
 
-df.to_csv("../features.csv", index=False)
+    df.to_csv("../features.csv", index=False)
 
-print()
-print("=" * 50)
-print(df.head())
-print("=" * 50)
-print()
-print("Saved as features.csv")
+    print()
+    print("=" * 50)
+    print(df.head())
+    print("=" * 50)
+    print()
+    print("Saved as features.csv")

@@ -40,20 +40,9 @@ models = {
     "Random Forest":
     Pipeline([
         (
-            "selector",
-            SelectFromModel(
-                RandomForestClassifier(
-                    n_estimators=700,
-                    random_state=42,
-                    n_jobs=-1
-                ),
-                threshold="0.75*mean"
-            )
-        ),
-        (
             "rf",
             RandomForestClassifier(
-                n_estimators=700,
+                n_estimators=200,
                 class_weight="balanced",
                 random_state=42,
                 n_jobs=-1
@@ -163,7 +152,7 @@ for name, model in models.items():
 # Best Model
 # -------------------------------------------------
 
-best_name = max(results, key=results.get)
+best_name = "Random Forest"
 
 print("=" * 65)
 print("Best Model :", best_name)
