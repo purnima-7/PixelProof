@@ -77,20 +77,28 @@ def fft_features(gray):
 
 def lbp_features(gray):
 
-    lbp = local_binary_pattern(
-        gray,
-        N_POINTS,
-        RADIUS,
-        method="uniform"
-    )
+    hist_all = []
 
-    hist, _ = np.histogram(
-        lbp.ravel(),
-        bins=np.arange(0, N_POINTS + 3),
-        density=True
-    )
+    for radius in [1, 3]:
 
-    return hist
+        n_points = 8 * radius
+
+        lbp = local_binary_pattern(
+            gray,
+            n_points,
+            radius,
+            method="uniform"
+        )
+
+        hist, _ = np.histogram(
+            lbp.ravel(),
+            bins=np.arange(0, n_points + 3),
+            density=True
+        )
+
+        hist_all.extend(hist)
+
+    return np.array(hist_all)
 
 def glcm_features(gray):
 
@@ -111,6 +119,37 @@ def glcm_features(gray):
     correlation = graycoprops(glcm, 'correlation')[0,0]
 
     return contrast, homogeneity, energy, correlation
+
+def rgb_features(img):
+
+    b, g, r = cv2.split(img)
+
+    return (
+        np.mean(r),
+        np.mean(g),
+        np.mean(b),
+
+        np.std(r),
+        np.std(g),
+        np.std(b)
+    )
+
+def hsv_features(img):
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    h, s, v = cv2.split(hsv)
+
+    return (
+        np.mean(h),
+        np.mean(s),
+        np.mean(v),
+
+        np.std(h),
+        np.std(s),
+        np.std(v)
+    )
+
 
 # -----------------------------
 # Main
@@ -133,8 +172,23 @@ for label in ["real", "screen"]:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.resize(gray, (256, 256))
+        img = cv2.resize(img,(256,256))
 
         hf, lf, peak = fft_features(gray)
+
+        r_mean,\
+        g_mean,\
+        b_mean,\
+        r_std,\
+        g_std,\
+        b_std = rgb_features(img)
+
+        h_mean,\
+        s_mean,\
+        v_mean,\
+        h_std,\
+        s_std,\
+        v_std = hsv_features(img)
 
         glcm_contrast,\
         glcm_homogeneity,\
@@ -158,6 +212,22 @@ for label in ["real", "screen"]:
             "glcm_homogeneity": glcm_homogeneity,
             "glcm_energy": glcm_energy,
             "glcm_correlation": glcm_correlation,
+
+            "r_mean": r_mean,
+            "g_mean": g_mean,
+            "b_mean": b_mean,
+
+            "r_std": r_std,
+            "g_std": g_std,
+            "b_std": b_std,
+
+            "h_mean": h_mean,
+            "s_mean": s_mean,
+            "v_mean": v_mean,
+
+            "h_std": h_std,
+            "s_std": s_std,
+            "v_std": v_std,
         }
 
         lbp_hist = lbp_features(gray)
