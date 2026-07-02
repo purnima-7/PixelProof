@@ -4,23 +4,25 @@ import joblib
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold, cross_validate
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 
 from xgboost import XGBClassifier
 
-# -----------------------------
+# -------------------------------------------------
 # Load Dataset
-# -----------------------------
+# -------------------------------------------------
 
-df = pd.read_csv("../features.csv")
+df = pd.read_csv("../features_selected.csv")
 
 X = df.drop(columns=["image", "label"])
+y = LabelEncoder().fit_transform(df["label"])
 
-encoder = LabelEncoder()
-y = encoder.fit_transform(df["label"])
+# -------------------------------------------------
+# Cross Validation
+# -------------------------------------------------
 
 cv = StratifiedKFold(
     n_splits=5,
@@ -28,89 +30,106 @@ cv = StratifiedKFold(
     random_state=42
 )
 
-# -----------------------------
+# -------------------------------------------------
 # Models
-# -----------------------------
+# -------------------------------------------------
 
 models = {
 
     "Random Forest":
     RandomForestClassifier(
-        n_estimators=500,
+        n_estimators=700,
+        max_depth=None,
+        min_samples_leaf=1,
+        class_weight="balanced",
         random_state=42,
-        class_weight="balanced"
+        n_jobs=-1
     ),
 
     "SVM":
     Pipeline([
         ("scaler", StandardScaler()),
-        ("svm", SVC(
-            kernel="rbf",
-            probability=True,
-            C=5,
-            gamma="scale",
-            random_state=42
-        ))
+        ("svm",
+            SVC(
+                kernel="rbf",
+                C=10,
+                gamma="scale",
+                probability=True,
+                random_state=42
+            )
+        )
     ]),
 
     "XGBoost":
     XGBClassifier(
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=4,
-        subsample=0.8,
-        colsample_bytree=0.8,
+        n_estimators=500,
+        learning_rate=0.03,
+        max_depth=5,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        objective="binary:logistic",
         eval_metric="logloss",
         random_state=42
     )
 }
 
-# -----------------------------
-# Evaluate
-# -----------------------------
+# -------------------------------------------------
+# Metrics
+# -------------------------------------------------
+
+scoring = {
+    "accuracy": "accuracy",
+    "precision": "precision",
+    "recall": "recall",
+    "f1": "f1",
+    "roc_auc": "roc_auc"
+}
 
 results = {}
 
+# -------------------------------------------------
+# Evaluation
+# -------------------------------------------------
+
 for name, model in models.items():
 
-    scores = cross_val_score(
+    scores = cross_validate(
         model,
         X,
         y,
         cv=cv,
-        scoring="accuracy"
+        scoring=scoring,
+        n_jobs=-1
     )
 
-    results[name] = scores
+    results[name] = np.mean(scores["test_accuracy"])
 
-    print("="*60)
+    print("=" * 65)
     print(name)
-    print("="*60)
+    print("=" * 65)
 
-    print("Fold Accuracy:")
-    print(np.round(scores,4))
-
-    print()
-
-    print("Mean Accuracy : {:.4f}".format(scores.mean()))
-    print("Std Dev       : {:.4f}".format(scores.std()))
+    print(f"Accuracy : {scores['test_accuracy'].mean():.4f} ± {scores['test_accuracy'].std():.4f}")
+    print(f"Precision: {scores['test_precision'].mean():.4f}")
+    print(f"Recall   : {scores['test_recall'].mean():.4f}")
+    print(f"F1 Score : {scores['test_f1'].mean():.4f}")
+    print(f"ROC AUC  : {scores['test_roc_auc'].mean():.4f}")
 
     print()
 
-# -----------------------------
-# Train Best Model
-# -----------------------------
+# -------------------------------------------------
+# Best Model
+# -------------------------------------------------
 
-best_name = max(results, key=lambda k: results[k].mean())
+best_name = max(results, key=results.get)
 
-print("="*60)
+print("=" * 65)
 print("Best Model :", best_name)
-print("="*60)
+print("=" * 65)
 
 best_model = models[best_name]
 
-best_model.fit(X,y)
+best_model.fit(X, y)
 
-joblib.dump(best_model,"../models/best_model.pkl")
+joblib.dump(best_model, "../models/best_model.pkl")
 
-print("\nSaved model to models/best_model.pkl")
+print("\nModel saved to models/best_model.pkl")
