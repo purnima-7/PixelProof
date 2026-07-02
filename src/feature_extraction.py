@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
-from skimage.feature import local_binary_pattern
+from skimage.feature import (
+    local_binary_pattern,
+    graycomatrix,
+    graycoprops
+)
 from skimage.measure import shannon_entropy
 
 # -----------------------------
@@ -64,8 +68,12 @@ def fft_features(gray):
     high_freq = magnitude[distance > radius]
     low_freq = magnitude[distance <= radius]
 
-    return np.mean(high_freq), np.mean(low_freq)
+    fft_high = np.mean(high_freq)
+    fft_low = np.mean(low_freq)
 
+    peak_strength = np.max(magnitude) / (np.mean(magnitude) + 1e-8)
+
+    return fft_high, fft_low, peak_strength
 
 def lbp_features(gray):
 
@@ -84,6 +92,25 @@ def lbp_features(gray):
 
     return hist
 
+def glcm_features(gray):
+
+    gray = (gray / 8).astype(np.uint8)
+
+    glcm = graycomatrix(
+        gray,
+        distances=[1],
+        angles=[0],
+        levels=32,
+        symmetric=True,
+        normed=True
+    )
+
+    contrast = graycoprops(glcm, 'contrast')[0,0]
+    homogeneity = graycoprops(glcm, 'homogeneity')[0,0]
+    energy = graycoprops(glcm, 'energy')[0,0]
+    correlation = graycoprops(glcm, 'correlation')[0,0]
+
+    return contrast, homogeneity, energy, correlation
 
 # -----------------------------
 # Main
@@ -105,8 +132,14 @@ for label in ["real", "screen"]:
             continue
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (256, 256))
 
-        hf, lf = fft_features(gray)
+        hf, lf, peak = fft_features(gray)
+
+        glcm_contrast,\
+        glcm_homogeneity,\
+        glcm_energy,\
+        glcm_correlation = glcm_features(gray)
 
         features = {
             "image": file,
@@ -119,6 +152,12 @@ for label in ["real", "screen"]:
             "glare_percentage": glare_percentage(gray),
             "fft_high": hf,
             "fft_low": lf,
+            "fft_peak_strength": peak,
+
+            "glcm_contrast": glcm_contrast,
+            "glcm_homogeneity": glcm_homogeneity,
+            "glcm_energy": glcm_energy,
+            "glcm_correlation": glcm_correlation,
         }
 
         lbp_hist = lbp_features(gray)
