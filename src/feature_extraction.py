@@ -10,6 +10,9 @@ from skimage.feature import (
     graycoprops
 )
 from skimage.measure import shannon_entropy
+from skimage.feature import local_binary_pattern
+from skimage.feature import canny
+from skimage.transform import probabilistic_hough_line
 
 from PIL import Image
 from pillow_heif import register_heif_opener
@@ -71,55 +74,49 @@ def glare_percentage(gray):
     return np.sum(gray > 240) / gray.size
 
 
-def fft_features(gray):
+def fft_peak_features(gray):
 
     f = np.fft.fft2(gray)
     fshift = np.fft.fftshift(f)
 
-    magnitude = np.abs(fshift)
+    magnitude = np.log(np.abs(fshift) + 1)
 
     h, w = magnitude.shape
     cy, cx = h // 2, w // 2
 
-    y, x = np.ogrid[:h, :w]
-    distance = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+    magnitude[cy-20:cy+20, cx-20:cx+20] = 0
 
-    radius = min(h, w) * 0.15
+    thresh = np.mean(magnitude) + 3*np.std(magnitude)
 
-    high_freq = magnitude[distance > radius]
-    low_freq = magnitude[distance <= radius]
+    peaks = magnitude > thresh
 
-    fft_high = np.mean(high_freq)
-    fft_low = np.mean(low_freq)
+    peak_count = np.sum(peaks)
 
-    peak_strength = np.max(magnitude) / (np.mean(magnitude) + 1e-8)
+    peak_strength = magnitude[peaks].sum() if peak_count else 0
 
-    return fft_high, fft_low, peak_strength
+    return peak_count, peak_strength
 
-def lbp_features(gray):
+def extract_lbp_features(gray):
+    radius = 2
+    n_points = 8 * radius
 
-    hist_all = []
+    lbp = local_binary_pattern(
+        gray,
+        n_points,
+        radius,
+        method='uniform'
+    )
 
-    for radius in [1, 3]:
+    hist, _ = np.histogram(
+        lbp.ravel(),
+        bins=np.arange(0, n_points + 3),
+        range=(0, n_points + 2)
+    )
 
-        n_points = 8 * radius
+    hist = hist.astype(np.float32)
+    hist /= (hist.sum() + 1e-6)
 
-        lbp = local_binary_pattern(
-            gray,
-            n_points,
-            radius,
-            method="uniform"
-        )
-
-        hist, _ = np.histogram(
-            lbp.ravel(),
-            bins=np.arange(0, n_points + 3),
-            density=True
-        )
-
-        hist_all.extend(hist)
-
-    return np.array(hist_all)
+    return hist
 
 def glcm_features(gray):
 
@@ -171,6 +168,77 @@ def hsv_features(img):
         np.std(v)
     )
 
+def pixel_grid_score(gray):
+
+    gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
+    gy = cv2.Sobel(gray, cv2.CV_64F, 0, 1)
+
+    spectrum_x = np.abs(np.fft.fft(gx.mean(axis=0)))
+    spectrum_y = np.abs(np.fft.fft(gy.mean(axis=1)))
+
+    score = (
+        np.max(spectrum_x[5:]) +
+        np.max(spectrum_y[5:])
+    )
+
+    return score
+
+def edge_features(gray):
+    """
+    Returns:
+    edge_density
+    num_lines
+    avg_line_length
+    """
+
+    edges = canny(gray / 255.0, sigma=1.2)
+
+    edge_density = np.mean(edges)
+
+    lines = probabilistic_hough_line(
+        edges,
+        threshold=10,
+        line_length=25,
+        line_gap=3
+    )
+
+    num_lines = len(lines)
+
+    if num_lines:
+        lengths = [
+            np.sqrt((p0[0]-p1[0])**2 + (p0[1]-p1[1])**2)
+            for p0, p1 in lines
+        ]
+        avg_length = np.mean(lengths)
+    else:
+        avg_length = 0
+
+    return {
+        "edge_density": edge_density,
+        "num_lines": num_lines,
+        "avg_line_length": avg_length
+    }
+
+def fft_peak_ratio(gray):
+
+    f = np.fft.fft2(gray)
+    fshift = np.fft.fftshift(f)
+
+    magnitude = np.log(np.abs(fshift) + 1)
+
+    h, w = magnitude.shape
+    cy, cx = h // 2, w // 2
+
+    magnitude[cy-15:cy+15, cx-15:cx+15] = 0
+
+    peak = magnitude.max()
+    mean = magnitude.mean()
+
+    return {
+        "fft_peak_ratio": peak / (mean + 1e-6),
+        "fft_peak": peak
+    }
+
 
 # -----------------------------
 # Main
@@ -195,7 +263,10 @@ for label in ["real", "screen"]:
         gray = cv2.resize(gray, (256, 256))
         img = cv2.resize(img,(256,256))
 
-        hf, lf, peak = fft_features(gray)
+        edge = edge_features(gray)
+        fft = fft_peak_ratio(gray)
+
+        peak_count, peak_strength = fft_peak_features(gray)
 
         r_mean,\
         g_mean,\
@@ -225,9 +296,15 @@ for label in ["real", "screen"]:
             "contrast": contrast(gray),
             "entropy": entropy(gray),
             "glare_percentage": glare_percentage(gray),
-            "fft_high": hf,
-            "fft_low": lf,
-            "fft_peak_strength": peak,
+            "pixel_grid_score": pixel_grid_score(gray),
+            "edge_density": edge["edge_density"],
+            "num_lines": edge["num_lines"],
+            "avg_line_length": edge["avg_line_length"],
+
+            "fft_peak_ratio": fft["fft_peak_ratio"],
+            "fft_peak": fft["fft_peak"],
+            "fft_peak_count": peak_count,
+            "fft_peak_strength": peak_strength,
 
             "glcm_contrast": glcm_contrast,
             "glcm_homogeneity": glcm_homogeneity,
@@ -251,7 +328,7 @@ for label in ["real", "screen"]:
             "v_std": v_std,
         }
 
-        lbp_hist = lbp_features(gray)
+        lbp_hist = extract_lbp_features(gray)
 
         for i, value in enumerate(lbp_hist):
             features[f"lbp_{i}"] = value
